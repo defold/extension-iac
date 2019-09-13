@@ -1,2 +1,2 @@
-# extension-iac
-Inter-app communication extension for Defold
+# Defold extension for Inter-app communication 
+
