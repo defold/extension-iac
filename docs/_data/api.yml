@@ -1,0 +1,47 @@
+- name: iac
+  type: table 
+  desc: Functions and constants for doing inter-app communication. Supported on iOS and Android.
+        [icon:ios] [icon:android]
+  members:
+
+#*****************************************************************************************************
+
+  - name: set_listener
+    type: function
+    desc: Sets the listener function for inter-app communication events.
+    parameters:
+      - name: self
+        type: object
+        desc: The current object.
+
+      - name: payload
+        type: table
+        desc: The iac payload.
+
+      - name: type
+        type: number
+        desc: The type of iac, an iac.TYPE_ enumeration. It can be one of the predefined constants below
+
+                    - `iac.TYPE_INVOCATION`
+
+    examples:
+      - desc: |-
+            ```lua
+              local function iac_listener(self, payload, type)
+                   if type == iac.TYPE_INVOCATION then
+                       -- This was an invocation
+                       print(payload.origin) -- origin may be empty string if it could not be resolved
+                       print(payload.url)
+                   end
+              end
+
+              local init(self)
+                   iac.set_listener(iac_listener)
+              end
+            ```
+#*****************************************************************************************************
+
+  - name: TYPE_INVOCATION
+    type: number
+    desc: iac type
+    
