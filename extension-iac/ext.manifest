@@ -1,1 +1,14 @@
 name: IACExt
+
+platforms:
+    armv7-ios:
+        context:
+            frameworks: ['Foundation', 'UIKit']
+
+    arm64-ios:
+        context:
+            frameworks: ['Foundation', 'UIKit']
+
+    x86_64-ios:
+        context:
+            frameworks: ['Foundation', 'UIKit']
