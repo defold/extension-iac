@@ -35,7 +35,7 @@
                    end
               end
 
-              local init(self)
+              function init(self)
                    iac.set_listener(iac_listener)
               end
             ```

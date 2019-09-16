@@ -1,29 +1,13 @@
+local function iac_listener(self, payload, type)
+	if type == iac.TYPE_INVOCATION then
+		print(payload.origin)
+		print(payload.url)
+		gui.set_text(gui.get_node("text"), payload.url)
+	end
+end
+
 function init(self)
-	-- Add initialization code here
-	-- Remove this function if not needed
-end
-
-function final(self)
-	-- Add finalization code here
-	-- Remove this function if not needed
-end
-
-function update(self, dt)
-	-- Add update code here
-	-- Remove this function if not needed
-end
-
-function on_message(self, message_id, message, sender)
-	-- Add message-handling code here
-	-- Remove this function if not needed
-end
-
-function on_input(self, action_id, action)
-	-- Add input-handling code here
-	-- Remove this function if not needed
-end
-
-function on_reload(self)
-	-- Add input-handling code here
-	-- Remove this function if not needed
+	if iac then
+		iac.set_listener(iac_listener)
+	end
 end
