@@ -10,9 +10,14 @@ height = 640
 
 [android]
 input_method = HiddenInputField
+package = com.defold.iac
 
 [project]
 title = extension-iac
 
 [library]
 include_dirs = extension-iac
+
+[ios]
+bundle_identifier = com.defold.iac
+
