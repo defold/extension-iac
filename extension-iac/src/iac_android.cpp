@@ -150,7 +150,7 @@ static void OnInvocation(const char* payload, const char *origin)
 }
 
 
-static int IAC_PlatformSetListener(lua_State* L)
+int IAC_PlatformSetListener(lua_State* L)
 {
     IAC* iac = &g_IAC;
     luaL_checktype(L, 1, LUA_TFUNCTION);
