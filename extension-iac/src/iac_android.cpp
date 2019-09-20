@@ -4,8 +4,6 @@
 
 #include "iac.h"
 
-extern struct android_app* g_AndroidApp;
-
 #define CMD_INVOKE 1
 
 struct Command
@@ -22,13 +20,13 @@ struct Command
 static JNIEnv* Attach()
 {
     JNIEnv* env = 0;
-    g_AndroidApp->activity->vm->AttachCurrentThread(&env, NULL);
+    dmGraphics::GetNativeAndroidJavaVM()->AttachCurrentThread(&env, NULL);
     return env;
 }
 
 static void Detach()
 {
-    g_AndroidApp->activity->vm->DetachCurrentThread();
+    dmGraphics::GetNativeAndroidJavaVM()->DetachCurrentThread();
 }
 
 struct IACInvocation
@@ -152,7 +150,7 @@ static void OnInvocation(const char* payload, const char *origin)
 }
 
 
-int IAC_PlatformSetListener(lua_State* L)
+static int IAC_PlatformSetListener(lua_State* L)
 {
     IAC* iac = &g_IAC;
     luaL_checktype(L, 1, LUA_TFUNCTION);
@@ -231,7 +229,7 @@ dmExtension::Result AppInitializeIAC(dmExtension::AppParams* params)
 
     jclass activity_class = env->FindClass("android/app/NativeActivity");
     jmethodID get_class_loader = env->GetMethodID(activity_class,"getClassLoader", "()Ljava/lang/ClassLoader;");
-    jobject cls = env->CallObjectMethod(g_AndroidApp->activity->clazz, get_class_loader);
+    jobject cls = env->CallObjectMethod(dmGraphics::GetNativeAndroidActivity(), get_class_loader);
     jclass class_loader = env->FindClass("java/lang/ClassLoader");
     jmethodID find_class = env->GetMethodID(class_loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
 
@@ -251,7 +249,7 @@ dmExtension::Result AppInitializeIAC(dmExtension::AppParams* params)
     jmethodID jni_constructor = env->GetMethodID(iac_jni_class, "<init>", "()V");
     g_IAC.m_IACJNI = env->NewGlobalRef(env->NewObject(iac_jni_class, jni_constructor));
 
-    env->CallVoidMethod(g_IAC.m_IAC, g_IAC.m_Start, g_AndroidApp->activity->clazz, g_IAC.m_IACJNI);
+    env->CallVoidMethod(g_IAC.m_IAC, g_IAC.m_Start, dmGraphics::GetNativeAndroidActivity(), g_IAC.m_IACJNI);
 
     Detach();
     return dmExtension::RESULT_OK;
