@@ -324,12 +324,12 @@ dmExtension::Result UpdateIAC(dmExtension::Params* params)
         }
         if (cmd.m_Payload != 0x0)
         {
-            free(cmd.m_Payload);
+            free((void*)cmd.m_Payload);
             cmd.m_Payload = 0x0;
         }
         if (cmd.m_Origin != 0x0)
         {
-            free(cmd.m_Origin);
+            free((void*)cmd.m_Origin);
             cmd.m_Origin = 0x0;
         }
     }
