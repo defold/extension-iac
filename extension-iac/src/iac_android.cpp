@@ -178,7 +178,7 @@ int IAC_PlatformSetListener(lua_State* L)
 
 static void QueueCommand(Command* cmd)
 {
-    dmMutex::ScopedLock lk(g_IAC.m_Mutex);
+    DM_MUTEX_SCOPED_LOCK(g_IAC.m_Mutex);
     if (g_IAC.m_CmdQueue.Full())
     {
         g_IAC.m_CmdQueue.OffsetCapacity(8);
@@ -295,7 +295,13 @@ dmExtension::Result FinalizeIAC(dmExtension::Params* params)
 
 dmExtension::Result UpdateIAC(dmExtension::Params* params)
 {
-    dmMutex::ScopedLock lk(g_IAC.m_Mutex);
+    if (g_IAC.m_CmdQueue.Empty())
+    {
+        return dmExtension::RESULT_OK;
+    }
+
+    DM_MUTEX_SCOPED_LOCK(g_IAC.m_Mutex);
+
     for (uint32_t i=0;i!=g_IAC.m_CmdQueue.Size();i++)
     {
         Command& cmd = g_IAC.m_CmdQueue[i];
@@ -318,16 +324,17 @@ dmExtension::Result UpdateIAC(dmExtension::Params* params)
         }
         if (cmd.m_Payload != 0x0)
         {
-            free((void*)cmd.m_Payload);
+            free(cmd.m_Payload);
             cmd.m_Payload = 0x0;
         }
         if (cmd.m_Origin != 0x0)
         {
-            free((void*)cmd.m_Origin);
+            free(cmd.m_Origin);
             cmd.m_Origin = 0x0;
         }
     }
     g_IAC.m_CmdQueue.SetSize(0);
+
     return dmExtension::RESULT_OK;
 }
 
