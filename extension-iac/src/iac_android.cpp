@@ -6,11 +6,11 @@
 
 #define CMD_INVOKE 1
 
-struct Command
+struct IACCommand
 {
-    Command()
+    IACCommand()
     {
-        memset(this, 0, sizeof(Command));
+        memset(this, 0, sizeof(IACCommand));
     }
     uint8_t m_Type;
     const char* m_Payload;
@@ -111,8 +111,10 @@ struct IAC
     IACInvocation        m_StoredInvocation;
 
     dmMutex::HMutex      m_Mutex;
-    dmArray<Command>     m_CmdQueue;
-} g_IAC;
+    dmArray<IACCommand>     m_CmdQueue;
+};
+
+static IAC g_IAC;
 
 
 static void OnInvocation(const char* payload, const char *origin)
@@ -176,7 +178,7 @@ int IAC_PlatformSetListener(lua_State* L)
 }
 
 
-static void QueueCommand(Command* cmd)
+static void QueueCommand(IACCommand* cmd)
 {
     DM_MUTEX_SCOPED_LOCK(g_IAC.m_Mutex);
     if (g_IAC.m_CmdQueue.Full())
@@ -208,7 +210,7 @@ extern "C" {
 
 JNIEXPORT void JNICALL Java_com_defold_iac_IACJNI_onInvocation(JNIEnv* env, jobject, jstring jpayload, jstring jorigin)
 {
-    Command cmd;
+    IACCommand cmd;
     cmd.m_Type = CMD_INVOKE;
     cmd.m_Payload = StrDup(env, jpayload);
     cmd.m_Origin = StrDup(env, jorigin);
@@ -304,7 +306,7 @@ dmExtension::Result UpdateIAC(dmExtension::Params* params)
 
     for (uint32_t i=0;i!=g_IAC.m_CmdQueue.Size();i++)
     {
-        Command& cmd = g_IAC.m_CmdQueue[i];
+        IACCommand& cmd = g_IAC.m_CmdQueue[i];
 
         switch (cmd.m_Type)
         {

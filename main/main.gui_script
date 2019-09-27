@@ -11,3 +11,11 @@ function init(self)
 		iac.set_listener(iac_listener)
 	end
 end
+
+// how to test on android:
+// adb shell am start -a android.intent.action.VIEW \
+//    -c android.intent.category.BROWSABLE \
+//    -d "com.defold.iac://testdata"
+
+// on ios copy paste this link into the browser adress line:
+// com.defold.iac://testdata
