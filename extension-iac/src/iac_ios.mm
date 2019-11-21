@@ -5,25 +5,6 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
-struct IACInvocationListener
-{
-    IACInvocationListener()
-    {
-        Clear();
-    }
-
-    void Clear()
-    {
-        m_L = 0;
-        m_Callback = LUA_NOREF;
-        m_Self = LUA_NOREF;
-    }
-
-    lua_State* m_L;
-    int        m_Callback;
-    int        m_Self;
-};
-
 
 struct IAC
 {
@@ -35,7 +16,7 @@ struct IAC
 
     void Clear() {
         m_AppDelegate = 0;
-        m_IACListener.Clear();
+        m_Listener = 0;
         m_LaunchInvocation = false;
 
         if (m_SavedInvocation) {
@@ -45,7 +26,7 @@ struct IAC
     }
 
     id<UIApplicationDelegate>   m_AppDelegate;
-    IACInvocationListener       m_IACListener;
+    dmScript::LuaCallbackInfo*  m_Listener;
     NSMutableDictionary*        m_SavedInvocation;
     bool                        m_LaunchInvocation;
 } g_IAC;
@@ -85,17 +66,16 @@ static void ObjCToLua(lua_State*L, id obj)
 
 static void RunIACListener(NSDictionary *userdata, uint32_t type)
 {
-    if (g_IAC.m_IACListener.m_Callback != LUA_NOREF)
+    if (g_IAC.m_Listener)
     {
-        lua_State* L = g_IAC.m_IACListener.m_L;
+        lua_State* L = dmScript::GetCallbackLuaContext(g_IAC.m_Listener);
         int top = lua_gettop(L);
 
-        lua_rawgeti(L, LUA_REGISTRYINDEX, g_IAC.m_IACListener.m_Callback);
-
-        // Setup self
-        lua_rawgeti(L, LUA_REGISTRYINDEX, g_IAC.m_IACListener.m_Self);
-        lua_pushvalue(L, -1);
-        dmScript::SetInstance(L);
+        if (!dmScript::SetupCallback(g_IAC.m_Listener))
+        {
+            assert(top == lua_gettop(L));
+            return;
+        }
 
         ObjCToLua(L, userdata);
         lua_pushnumber(L, type);
@@ -105,6 +85,8 @@ static void RunIACListener(NSDictionary *userdata, uint32_t type)
             dmLogError("Error running iac callback: %s", lua_tostring(L, -1));
             lua_pop(L, 1);
         }
+
+        dmScript::TeardownCallback(g_IAC.m_Listener);
         assert(top == lua_gettop(L));
     }
 }
@@ -130,7 +112,7 @@ static void RunIACListener(NSDictionary *userdata, uint32_t type)
     {
         [g_IAC.m_SavedInvocation release];
         g_IAC.m_SavedInvocation = 0;
-        if (g_IAC.m_IACListener.m_Callback == LUA_NOREF)
+        if (!g_IAC.m_Listener)
         {
             dmLogWarning("No iac listener set. Invocation discarded.");
         }
@@ -141,7 +123,7 @@ static void RunIACListener(NSDictionary *userdata, uint32_t type)
     {
         [userdata setObject:sourceApplication forKey:@"origin"];
     }
-    if (g_IAC.m_IACListener.m_Callback == LUA_NOREF)
+    if (!g_IAC.m_Listener)
     {
         g_IAC.m_SavedInvocation = userdata;
     }
@@ -181,15 +163,10 @@ int IAC_PlatformSetListener(lua_State* L)
     luaL_checktype(L, 1, LUA_TFUNCTION);
     lua_pushvalue(L, 1);
     int cb = dmScript::Ref(L, LUA_REGISTRYINDEX);
-    if (iac->m_IACListener.m_Callback != LUA_NOREF) {
-        dmScript::Unref(iac->m_IACListener.m_L, LUA_REGISTRYINDEX, iac->m_IACListener.m_Callback);
-        dmScript::Unref(iac->m_IACListener.m_L, LUA_REGISTRYINDEX, iac->m_IACListener.m_Self);
+    if (iac->m_Listener) {
+        dmScript::DestroyCallback(iac->m_Listener);
     }
-    iac->m_IACListener.m_L = dmScript::GetMainThread(L);
-    iac->m_IACListener.m_Callback = cb;
-
-    dmScript::GetInstance(L);
-    iac->m_IACListener.m_Self = dmScript::Ref(L, LUA_REGISTRYINDEX);
+    iac->m_Listener = dmScript::CreateCallback(L, 1);
 
     if (g_IAC.m_SavedInvocation)
     {
@@ -228,12 +205,9 @@ dmExtension::Result InitializeIAC(dmExtension::Params* params)
 
 dmExtension::Result FinalizeIAC(dmExtension::Params* params)
 {
-    if (params->m_L == g_IAC.m_IACListener.m_L && g_IAC.m_IACListener.m_Callback != LUA_NOREF) {
-        dmScript::Unref(g_IAC.m_IACListener.m_L, LUA_REGISTRYINDEX, g_IAC.m_IACListener.m_Callback);
-        dmScript::Unref(g_IAC.m_IACListener.m_L, LUA_REGISTRYINDEX, g_IAC.m_IACListener.m_Self);
-        g_IAC.m_IACListener.m_L = 0;
-        g_IAC.m_IACListener.m_Callback = LUA_NOREF;
-        g_IAC.m_IACListener.m_Self = LUA_NOREF;
+    if (params->m_L == dmScript::GetCallbackLuaContext(g_IAC.m_Listener)) {
+        dmScript::DestroyCallback(g_IAC.m_Listener);
+        g_IAC.m_Listener = 0;
     }
     return dmIAC::Finalize(params);
 }

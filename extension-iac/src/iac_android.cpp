@@ -75,33 +75,13 @@ struct IACInvocation
     bool        m_Pending;
 };
 
-struct IACListener
-{
-    IACListener()
-    {
-        m_L = 0;
-        m_Callback = LUA_NOREF;
-        m_Self = LUA_NOREF;
-    }
-    lua_State* m_L;
-    int        m_Callback;
-    int        m_Self;
-};
-
 struct IAC
 {
     IAC()
     {
         memset(this, 0, sizeof(*this));
-        m_Callback = LUA_NOREF;
-        m_Self = LUA_NOREF;
-        m_Listener.m_Callback = LUA_NOREF;
-        m_Listener.m_Self = LUA_NOREF;
     }
-    int                  m_Callback;
-    int                  m_Self;
-    lua_State*           m_L;
-    IACListener          m_Listener;
+    dmScript::LuaCallbackInfo* m_Listener;
 
     jobject              m_IAC;
     jobject              m_IACJNI;
@@ -119,19 +99,13 @@ static IAC g_IAC;
 
 static void OnInvocation(const char* payload, const char *origin)
 {
-    lua_State* L = g_IAC.m_Listener.m_L;
+    IAC* iac = &g_IAC;
+
+    lua_State* L = dmScript::GetCallbackLuaContext(iac->m_Listener);
     int top = lua_gettop(L);
-    lua_rawgeti(L, LUA_REGISTRYINDEX, g_IAC.m_Listener.m_Callback);
 
-    // Setup self
-    lua_rawgeti(L, LUA_REGISTRYINDEX, g_IAC.m_Listener.m_Self);
-    lua_pushvalue(L, -1);
-    dmScript::SetInstance(L);
-
-    if (!dmScript::IsInstanceValid(L))
+    if (!dmScript::SetupCallback(iac->m_Listener))
     {
-        dmLogError("Could not run iac callback because the instance has been deleted.");
-        lua_pop(L, 2);
         assert(top == lua_gettop(L));
         return;
     }
@@ -148,6 +122,8 @@ static void OnInvocation(const char* payload, const char *origin)
         dmLogError("Error running iac callback: %s", lua_tostring(L, -1));
         lua_pop(L, 1);
     }
+
+    dmScript::TeardownCallback(iac->m_Listener);
     assert(top == lua_gettop(L));
 }
 
@@ -155,19 +131,11 @@ static void OnInvocation(const char* payload, const char *origin)
 int IAC_PlatformSetListener(lua_State* L)
 {
     IAC* iac = &g_IAC;
-    luaL_checktype(L, 1, LUA_TFUNCTION);
-    lua_pushvalue(L, 1);
-    int cb = dmScript::Ref(L, LUA_REGISTRYINDEX);
 
-    if (iac->m_Listener.m_Callback != LUA_NOREF) {
-        dmScript::Unref(iac->m_Listener.m_L, LUA_REGISTRYINDEX, iac->m_Listener.m_Callback);
-        dmScript::Unref(iac->m_Listener.m_L, LUA_REGISTRYINDEX, iac->m_Listener.m_Self);
-    }
+    if (iac->m_Listener)
+        dmScript::DestroyCallback(iac->m_Listener);
 
-    iac->m_Listener.m_L = dmScript::GetMainThread(L);
-    iac->m_Listener.m_Callback = cb;
-    dmScript::GetInstance(L);
-    iac->m_Listener.m_Self = dmScript::Ref(L, LUA_REGISTRYINDEX);
+    iac->m_Listener = dmScript::CreateCallback(L, 1);
 
     // handle stored invocation
     const char* payload, *origin;
@@ -268,9 +236,7 @@ dmExtension::Result AppFinalizeIAC(dmExtension::AppParams* params)
     Detach();
     g_IAC.m_IAC = NULL;
     g_IAC.m_IACJNI = NULL;
-    g_IAC.m_L = 0;
-    g_IAC.m_Callback = LUA_NOREF;
-    g_IAC.m_Self = LUA_NOREF;
+    g_IAC.m_Listener = 0;
     dmMutex::Delete(g_IAC.m_Mutex);
     return dmExtension::RESULT_OK;
 }
@@ -284,12 +250,9 @@ dmExtension::Result InitializeIAC(dmExtension::Params* params)
 
 dmExtension::Result FinalizeIAC(dmExtension::Params* params)
 {
-    if (params->m_L == g_IAC.m_Listener.m_L && g_IAC.m_Listener.m_Callback != LUA_NOREF) {
-        dmScript::Unref(g_IAC.m_Listener.m_L, LUA_REGISTRYINDEX, g_IAC.m_Listener.m_Callback);
-        dmScript::Unref(g_IAC.m_Listener.m_L, LUA_REGISTRYINDEX, g_IAC.m_Listener.m_Self);
-        g_IAC.m_Listener.m_L = 0;
-        g_IAC.m_Listener.m_Callback = LUA_NOREF;
-        g_IAC.m_Listener.m_Self = LUA_NOREF;
+    if (params->m_L == dmScript::GetCallbackLuaContext(g_IAC.m_Listener)) {
+        dmScript::DestroyCallback(g_IAC.m_Listener);
+        g_IAC.m_Listener = 0;
     }
     return dmIAC::Finalize(params);
 }
@@ -312,7 +275,7 @@ dmExtension::Result UpdateIAC(dmExtension::Params* params)
         {
             case CMD_INVOKE:
                 {
-                    if (g_IAC.m_Listener.m_Callback == LUA_NOREF)
+                    if (!g_IAC.m_Listener)
                     {
                         dmLogError("No iac listener set. Invocation discarded.");
                         g_IAC.m_StoredInvocation.Store(cmd.m_Payload, cmd.m_Origin);
