@@ -10,25 +10,26 @@ struct IAC
 {
     IAC()
     {
-        m_SavedInvocation = 0;
         Clear();
     }
 
     void Clear() {
         m_AppDelegate = 0;
         m_Listener = 0;
-        m_LaunchInvocation = false;
 
-        if (m_SavedInvocation) {
-             [m_SavedInvocation release];
-             m_SavedInvocation = 0;
+        if (m_StoredInvocation) {
+             m_StoredInvocation.Release()
         }
     }
+    dmScript::LuaCallbackInfo*  m_Listener;
 
     id<UIApplicationDelegate>   m_AppDelegate;
-    dmScript::LuaCallbackInfo*  m_Listener;
     NSMutableDictionary*        m_SavedInvocation;
     bool                        m_LaunchInvocation;
+
+    IACInvocation               m_StoredInvocation;
+
+    IACCommandQueue             m_CmdQueue;
 } g_IAC;
 
 
@@ -100,6 +101,7 @@ static void RunIACListener(NSDictionary *userdata, uint32_t type)
 @implementation IACAppDelegate
 
 -(BOOL) application:(UIApplication *)application openURL:(NSURL *)url sourceApplication:(NSString *)sourceApplication annotation:(id)annotation{
+    dmLogError("openURL");
 
     // Handle invocations
     if(g_IAC.m_LaunchInvocation)
@@ -137,6 +139,7 @@ static void RunIACListener(NSDictionary *userdata, uint32_t type)
 
 
 - (BOOL)application:(UIApplication *)application willFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    dmLogError("willFinishLaunchingWithOptions");
 
     // Handle invocations launching the app.
     // willFinishLaunchingWithOptions is called prior to any scripts so we are garuanteed to have this information at any time set_listener is called!
@@ -157,15 +160,32 @@ static void RunIACListener(NSDictionary *userdata, uint32_t type)
 @end
 
 
+
+struct IACAppDelegateRegister
+{
+    IACAppDelegateRegister() {
+        dmLogError("IACAppDelegateRegister");
+        g_IAC.Clear();
+        g_IAC.m_AppDelegate = [[IACAppDelegate alloc] init];
+        dmExtension::RegisteriOSUIApplicationDelegate(g_IAC.m_AppDelegate);
+    }
+    ~IACAppDelegateRegister() {
+        dmExtension::UnregisteriOSUIApplicationDelegate(g_IAC.m_AppDelegate);
+        [g_IAC.m_AppDelegate release];
+        g_IAC.Clear();
+    }
+};
+IACAppDelegateRegister g_IACAppDelegateRegister;
+
+
+
 int IAC_PlatformSetListener(lua_State* L)
 {
     IAC* iac = &g_IAC;
-    luaL_checktype(L, 1, LUA_TFUNCTION);
-    lua_pushvalue(L, 1);
-    int cb = dmScript::Ref(L, LUA_REGISTRYINDEX);
-    if (iac->m_Listener) {
+
+    if (iac->m_Listener)
         dmScript::DestroyCallback(iac->m_Listener);
-    }
+
     iac->m_Listener = dmScript::CreateCallback(L, 1);
 
     if (g_IAC.m_SavedInvocation)
@@ -180,19 +200,13 @@ int IAC_PlatformSetListener(lua_State* L)
 
 dmExtension::Result AppInitializeIAC(dmExtension::AppParams* params)
 {
-    g_IAC.Clear();
-    g_IAC.m_AppDelegate = [[IACAppDelegate alloc] init];
-    dmExtension::RegisteriOSUIApplicationDelegate(g_IAC.m_AppDelegate);
     return dmExtension::RESULT_OK;
 }
 
 
 dmExtension::Result AppFinalizeIAC(dmExtension::AppParams* params)
 {
-    dmExtension::UnregisteriOSUIApplicationDelegate(g_IAC.m_AppDelegate);
-    [g_IAC.m_AppDelegate release];
-    g_IAC.m_AppDelegate = 0;
-    g_IAC.Clear();
+    IAC_Queue_Destroy(&g_IAC.m_CmdQueue);
     return dmExtension::RESULT_OK;
 }
 
@@ -212,6 +226,33 @@ dmExtension::Result FinalizeIAC(dmExtension::Params* params)
     return dmIAC::Finalize(params);
 }
 
-DM_DECLARE_EXTENSION(IACExt, "IAC", AppInitializeIAC, AppFinalizeIAC, InitializeIAC, 0, 0, FinalizeIAC)
+static void IAC_OnCommand(IACCommand* cmd, void*)
+{
+    switch (cmd->m_Command)
+    {
+    case IAC_INVOKE:
+        HandleInvocation(cmd);
+        break;
+
+    default:
+        assert(false);
+    }
+
+    if (cmd->m_Payload) {
+        free(cmd->m_Payload);
+    }
+    if (cmd->m_Origin) {
+        free(cmd->m_Origin);
+    }
+}
+
+dmExtension::Result UpdateIAC(dmExtension::Params* params)
+{
+    IAC_Queue_Flush(&g_IAC.m_CmdQueue, IAC_OnCommand, 0);
+    return dmExtension::RESULT_OK;
+}
+
+
+DM_DECLARE_EXTENSION(IACExt, "IAC", AppInitializeIAC, AppFinalizeIAC, InitializeIAC, UpdateIAC, 0, FinalizeIAC)
 
 #endif // DM_PLATFORM_IOS
