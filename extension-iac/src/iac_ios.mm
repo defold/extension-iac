@@ -139,7 +139,6 @@ static void HandleInvocation(const IACCommand* cmd)
 {
     if (!g_IAC.m_Listener)
     {
-        dmLogError("No iac listener set. Invocation discarded.");
         g_IAC.m_StoredInvocation.Store((const char*)cmd->m_Payload, (const char*)cmd->m_Origin);
     }
     else
