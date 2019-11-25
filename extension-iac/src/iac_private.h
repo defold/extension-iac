@@ -69,8 +69,8 @@ struct DM_ALIGNED(16) IACCommand
 
     // The actual command payload
     int32_t  	m_Command;
-    void*	  	m_Payload;
-    void*    	m_Origin;
+    const char* m_Payload;
+    const char* m_Origin;
 };
 
 struct IACCommandQueue

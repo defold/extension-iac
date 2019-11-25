@@ -95,11 +95,11 @@ static void HandleInvocation(const IACCommand* cmd)
 {
     if (!g_IAC.m_Listener)
     {
-        g_IAC.m_StoredInvocation.Store((const char*)cmd->m_Payload, (const char*)cmd->m_Origin);
+        g_IAC.m_StoredInvocation.Store(cmd->m_Payload, cmd->m_Origin);
     }
     else
     {
-        OnInvocation((const char*)cmd->m_Payload, (const char*)cmd->m_Origin);
+        OnInvocation(cmd->m_Payload, cmd->m_Origin);
     }
 }
 
@@ -128,8 +128,8 @@ JNIEXPORT void JNICALL Java_com_defold_iac_IACJNI_onInvocation(JNIEnv* env, jobj
 {
     IACCommand cmd;
     cmd.m_Command = IAC_INVOKE;
-    cmd.m_Payload = (void*)StrDup(env, jpayload);
-    cmd.m_Origin = (void*)StrDup(env, jorigin);
+    cmd.m_Payload = StrDup(env, jpayload);
+    cmd.m_Origin = StrDup(env, jorigin);
     IAC_Queue_Push(&g_IAC.m_CmdQueue, &cmd);
 }
 
@@ -217,10 +217,10 @@ static void IAC_OnCommand(IACCommand* cmd, void*)
     }
 
     if (cmd->m_Payload) {
-        free(cmd->m_Payload);
+        free((void*)cmd->m_Payload);
     }
     if (cmd->m_Origin) {
-        free(cmd->m_Origin);
+        free((void*)cmd->m_Origin);
     }
 }
 
