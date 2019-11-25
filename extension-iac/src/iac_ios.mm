@@ -188,12 +188,8 @@ static void IAC_OnCommand(IACCommand* cmd, void*)
         assert(false);
     }
 
-    if (cmd->m_Payload) {
-        free(cmd->m_Payload);
-    }
-    if (cmd->m_Origin) {
-        free(cmd->m_Origin);
-    }
+    free((void*)cmd->m_Payload);
+    free((void*)cmd->m_Origin);
 }
 
 dmExtension::Result UpdateIAC(dmExtension::Params* params)
