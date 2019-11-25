@@ -1,21 +1,11 @@
 #if defined(DM_PLATFORM_ANDROID)
+
 #include <jni.h>
 #include <stdlib.h>
 
 #include "iac.h"
+#include "iac_private.h"
 
-#define CMD_INVOKE 1
-
-struct IACCommand
-{
-    IACCommand()
-    {
-        memset(this, 0, sizeof(IACCommand));
-    }
-    uint8_t m_Type;
-    const char* m_Payload;
-    const char* m_Origin;
-};
 
 static JNIEnv* Attach()
 {
@@ -29,79 +19,14 @@ static void Detach()
     dmGraphics::GetNativeAndroidJavaVM()->DetachCurrentThread();
 }
 
-struct IACInvocation
-{
-    IACInvocation()
-    {
-        memset(this, 0x0, sizeof(IACInvocation));
-    }
-
-    bool Get(const char** payload, const char** origin)
-    {
-        if(!m_Pending)
-            return false;
-        m_Pending = false;
-        *payload = m_Payload;
-        *origin = m_Origin;
-        return true;
-    }
-
-    void Store(const char* payload, const char* origin)
-    {
-        Release();
-        if(payload)
-        {
-            m_Payload = strdup(payload);
-            m_Pending = true;
-        }
-        if(origin)
-        {
-            m_Origin = strdup(origin);
-            m_Pending = true;
-        }
-    }
-
-    void Release()
-    {
-        if(m_Payload)
-            free((void*)m_Payload);
-        if(m_Origin)
-            free((void*)m_Origin);
-        memset(this, 0x0, sizeof(IACInvocation));
-    }
-
-    const char* m_Payload;
-    const char* m_Origin;
-    bool        m_Pending;
-};
-
-struct IACListener
-{
-    IACListener()
-    {
-        m_L = 0;
-        m_Callback = LUA_NOREF;
-        m_Self = LUA_NOREF;
-    }
-    lua_State* m_L;
-    int        m_Callback;
-    int        m_Self;
-};
 
 struct IAC
 {
     IAC()
     {
         memset(this, 0, sizeof(*this));
-        m_Callback = LUA_NOREF;
-        m_Self = LUA_NOREF;
-        m_Listener.m_Callback = LUA_NOREF;
-        m_Listener.m_Self = LUA_NOREF;
     }
-    int                  m_Callback;
-    int                  m_Self;
-    lua_State*           m_L;
-    IACListener          m_Listener;
+    dmScript::LuaCallbackInfo* m_Listener;
 
     jobject              m_IAC;
     jobject              m_IACJNI;
@@ -110,8 +35,7 @@ struct IAC
 
     IACInvocation        m_StoredInvocation;
 
-    dmMutex::HMutex      m_Mutex;
-    dmArray<IACCommand>     m_CmdQueue;
+    IACCommandQueue      m_CmdQueue;
 };
 
 static IAC g_IAC;
@@ -119,19 +43,13 @@ static IAC g_IAC;
 
 static void OnInvocation(const char* payload, const char *origin)
 {
-    lua_State* L = g_IAC.m_Listener.m_L;
+    IAC* iac = &g_IAC;
+
+    lua_State* L = dmScript::GetCallbackLuaContext(iac->m_Listener);
     int top = lua_gettop(L);
-    lua_rawgeti(L, LUA_REGISTRYINDEX, g_IAC.m_Listener.m_Callback);
 
-    // Setup self
-    lua_rawgeti(L, LUA_REGISTRYINDEX, g_IAC.m_Listener.m_Self);
-    lua_pushvalue(L, -1);
-    dmScript::SetInstance(L);
-
-    if (!dmScript::IsInstanceValid(L))
+    if (!dmScript::SetupCallback(iac->m_Listener))
     {
-        dmLogError("Could not run iac callback because the instance has been deleted.");
-        lua_pop(L, 2);
         assert(top == lua_gettop(L));
         return;
     }
@@ -148,6 +66,8 @@ static void OnInvocation(const char* payload, const char *origin)
         dmLogError("Error running iac callback: %s", lua_tostring(L, -1));
         lua_pop(L, 1);
     }
+
+    dmScript::TeardownCallback(iac->m_Listener);
     assert(top == lua_gettop(L));
 }
 
@@ -155,19 +75,11 @@ static void OnInvocation(const char* payload, const char *origin)
 int IAC_PlatformSetListener(lua_State* L)
 {
     IAC* iac = &g_IAC;
-    luaL_checktype(L, 1, LUA_TFUNCTION);
-    lua_pushvalue(L, 1);
-    int cb = dmScript::Ref(L, LUA_REGISTRYINDEX);
 
-    if (iac->m_Listener.m_Callback != LUA_NOREF) {
-        dmScript::Unref(iac->m_Listener.m_L, LUA_REGISTRYINDEX, iac->m_Listener.m_Callback);
-        dmScript::Unref(iac->m_Listener.m_L, LUA_REGISTRYINDEX, iac->m_Listener.m_Self);
-    }
+    if (iac->m_Listener)
+        dmScript::DestroyCallback(iac->m_Listener);
 
-    iac->m_Listener.m_L = dmScript::GetMainThread(L);
-    iac->m_Listener.m_Callback = cb;
-    dmScript::GetInstance(L);
-    iac->m_Listener.m_Self = dmScript::Ref(L, LUA_REGISTRYINDEX);
+    iac->m_Listener = dmScript::CreateCallback(L, 1);
 
     // handle stored invocation
     const char* payload, *origin;
@@ -178,15 +90,19 @@ int IAC_PlatformSetListener(lua_State* L)
 }
 
 
-static void QueueCommand(IACCommand* cmd)
+
+static void HandleInvocation(const IACCommand* cmd)
 {
-    DM_MUTEX_SCOPED_LOCK(g_IAC.m_Mutex);
-    if (g_IAC.m_CmdQueue.Full())
+    if (!g_IAC.m_Listener)
     {
-        g_IAC.m_CmdQueue.OffsetCapacity(8);
+        g_IAC.m_StoredInvocation.Store(cmd->m_Payload, cmd->m_Origin);
     }
-    g_IAC.m_CmdQueue.Push(*cmd);
+    else
+    {
+        OnInvocation(cmd->m_Payload, cmd->m_Origin);
+    }
 }
+
 
 static const char* StrDup(JNIEnv* env, jstring s)
 {
@@ -211,10 +127,10 @@ extern "C" {
 JNIEXPORT void JNICALL Java_com_defold_iac_IACJNI_onInvocation(JNIEnv* env, jobject, jstring jpayload, jstring jorigin)
 {
     IACCommand cmd;
-    cmd.m_Type = CMD_INVOKE;
+    cmd.m_Command = IAC_INVOKE;
     cmd.m_Payload = StrDup(env, jpayload);
     cmd.m_Origin = StrDup(env, jorigin);
-    QueueCommand(&cmd);
+    IAC_Queue_Push(&g_IAC.m_CmdQueue, &cmd);
 }
 
 #ifdef __cplusplus
@@ -224,8 +140,7 @@ JNIEXPORT void JNICALL Java_com_defold_iac_IACJNI_onInvocation(JNIEnv* env, jobj
 
 dmExtension::Result AppInitializeIAC(dmExtension::AppParams* params)
 {
-    g_IAC.m_Mutex = dmMutex::New();
-    g_IAC.m_CmdQueue.SetCapacity(8);
+    IAC_Queue_Create(&g_IAC.m_CmdQueue);
 
     JNIEnv* env = Attach();
 
@@ -268,10 +183,8 @@ dmExtension::Result AppFinalizeIAC(dmExtension::AppParams* params)
     Detach();
     g_IAC.m_IAC = NULL;
     g_IAC.m_IACJNI = NULL;
-    g_IAC.m_L = 0;
-    g_IAC.m_Callback = LUA_NOREF;
-    g_IAC.m_Self = LUA_NOREF;
-    dmMutex::Delete(g_IAC.m_Mutex);
+    g_IAC.m_Listener = 0;
+    IAC_Queue_Destroy(&g_IAC.m_CmdQueue);
     return dmExtension::RESULT_OK;
 }
 
@@ -284,59 +197,36 @@ dmExtension::Result InitializeIAC(dmExtension::Params* params)
 
 dmExtension::Result FinalizeIAC(dmExtension::Params* params)
 {
-    if (params->m_L == g_IAC.m_Listener.m_L && g_IAC.m_Listener.m_Callback != LUA_NOREF) {
-        dmScript::Unref(g_IAC.m_Listener.m_L, LUA_REGISTRYINDEX, g_IAC.m_Listener.m_Callback);
-        dmScript::Unref(g_IAC.m_Listener.m_L, LUA_REGISTRYINDEX, g_IAC.m_Listener.m_Self);
-        g_IAC.m_Listener.m_L = 0;
-        g_IAC.m_Listener.m_Callback = LUA_NOREF;
-        g_IAC.m_Listener.m_Self = LUA_NOREF;
+    if (params->m_L == dmScript::GetCallbackLuaContext(g_IAC.m_Listener)) {
+        dmScript::DestroyCallback(g_IAC.m_Listener);
+        g_IAC.m_Listener = 0;
     }
     return dmIAC::Finalize(params);
 }
 
+static void IAC_OnCommand(IACCommand* cmd, void*)
+{
+    switch (cmd->m_Command)
+    {
+    case IAC_INVOKE:
+        HandleInvocation(cmd);
+        break;
+
+    default:
+        assert(false);
+    }
+
+    if (cmd->m_Payload) {
+        free((void*)cmd->m_Payload);
+    }
+    if (cmd->m_Origin) {
+        free((void*)cmd->m_Origin);
+    }
+}
 
 dmExtension::Result UpdateIAC(dmExtension::Params* params)
 {
-    if (g_IAC.m_CmdQueue.Empty())
-    {
-        return dmExtension::RESULT_OK;
-    }
-
-    DM_MUTEX_SCOPED_LOCK(g_IAC.m_Mutex);
-
-    for (uint32_t i=0;i!=g_IAC.m_CmdQueue.Size();i++)
-    {
-        IACCommand& cmd = g_IAC.m_CmdQueue[i];
-
-        switch (cmd.m_Type)
-        {
-            case CMD_INVOKE:
-                {
-                    if (g_IAC.m_Listener.m_Callback == LUA_NOREF)
-                    {
-                        dmLogError("No iac listener set. Invocation discarded.");
-                        g_IAC.m_StoredInvocation.Store(cmd.m_Payload, cmd.m_Origin);
-                    }
-                    else
-                    {
-                        OnInvocation(cmd.m_Payload, cmd.m_Origin);
-                    }
-                }
-                break;
-        }
-        if (cmd.m_Payload != 0x0)
-        {
-            free((void*)cmd.m_Payload);
-            cmd.m_Payload = 0x0;
-        }
-        if (cmd.m_Origin != 0x0)
-        {
-            free((void*)cmd.m_Origin);
-            cmd.m_Origin = 0x0;
-        }
-    }
-    g_IAC.m_CmdQueue.SetSize(0);
-
+    IAC_Queue_Flush(&g_IAC.m_CmdQueue, IAC_OnCommand, 0);
     return dmExtension::RESULT_OK;
 }
 

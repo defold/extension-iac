@@ -1,4 +1,5 @@
 #if defined(DM_PLATFORM_ANDROID) || defined(DM_PLATFORM_IOS)
+
 #include "iac.h"
 
 // Extension internal platform specific functions
