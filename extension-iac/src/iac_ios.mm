@@ -52,15 +52,23 @@ struct IAC
 - (BOOL)application:(UIApplication *)application willFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     // Handle invocations launching the app.
     // willFinishLaunchingWithOptions is called prior to any scripts so we are garuanteed to have this information at any time set_listener is called!
-    const char* origin = [[launchOptions valueForKey:UIApplicationLaunchOptionsSourceApplicationKey] UTF8String];
-    const char* payload = [[[launchOptions valueForKey:UIApplicationLaunchOptionsURLKey] absoluteString] UTF8String];
+    const char* origin = 0;
+    const char* payload = 0;
+
+    if (launchOptions[UIApplicationLaunchOptionsSourceApplicationKey]) {
+        origin = [[launchOptions valueForKey:UIApplicationLaunchOptionsSourceApplicationKey] UTF8String];
+    }
+    if (launchOptions[UIApplicationLaunchOptionsURLKey]) {
+        payload = [[[launchOptions valueForKey:UIApplicationLaunchOptionsURLKey] absoluteString] UTF8String];
+    }
 
     IACCommand cmd;
     cmd.m_Command = IAC_INVOKE;
-    cmd.m_Payload = strdup(payload);
-    cmd.m_Origin = strdup(origin);
-    IAC_Queue_Push(&g_IAC.m_CmdQueue, &cmd);
+    cmd.m_Payload = payload ? strdup(payload) : 0;
+    cmd.m_Origin = origin ? strdup(origin) : 0;
 
+    if (payload != 0 || origin != 0)
+        IAC_Queue_Push(&g_IAC.m_CmdQueue, &cmd);
 
     // Return YES prevents OpenURL from being called, we need to do this as other extensions might and therefore internally handle OpenURL also being called.
     return YES;
