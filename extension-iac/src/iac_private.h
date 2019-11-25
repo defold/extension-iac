@@ -40,10 +40,8 @@ struct IACInvocation
 
     void Release()
     {
-        if(m_Payload)
-            free((void*)m_Payload);
-        if(m_Origin)
-            free((void*)m_Origin);
+        free((void*)m_Payload);
+        free((void*)m_Origin);
         memset(this, 0x0, sizeof(IACInvocation));
     }
 
