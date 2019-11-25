@@ -38,11 +38,11 @@ struct IAC
 
 -(BOOL) application:(UIApplication *)application openURL:(NSURL *)url sourceApplication:(NSString *)sourceApplication annotation:(id)annotation{
     const char* payload = [[url absoluteString] UTF8String];
-    const char* origin = [sourceApplication UTF8String];
+    const char* origin = sourceApplication ? [sourceApplication UTF8String] : 0;
     IACCommand cmd;
     cmd.m_Command = IAC_INVOKE;
     cmd.m_Payload = strdup(payload);
-    cmd.m_Origin = strdup(origin);
+    cmd.m_Origin = origin ? strdup(origin) : 0;
     IAC_Queue_Push(&g_IAC.m_CmdQueue, &cmd);
 
     return YES;
@@ -102,8 +102,10 @@ static void OnInvocation(const char* payload, const char *origin)
     lua_createtable(L, 0, 2);
     lua_pushstring(L, payload);
     lua_setfield(L, -2, "url");
-    lua_pushstring(L, origin);
-    lua_setfield(L, -2, "origin");
+    if (origin) {
+        lua_pushstring(L, origin);
+        lua_setfield(L, -2, "origin");
+    }
     lua_pushnumber(L, DM_IAC_EXTENSION_TYPE_INVOCATION);
 
     int ret = lua_pcall(L, 3, 0, 0);
