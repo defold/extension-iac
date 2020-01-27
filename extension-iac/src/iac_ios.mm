@@ -160,6 +160,7 @@ static void HandleInvocation(const IACCommand* cmd)
 
 dmExtension::Result AppInitializeIAC(dmExtension::AppParams* params)
 {
+    IAC_Queue_Create(&g_IAC.m_CmdQueue);
     return dmExtension::RESULT_OK;
 }
 
