@@ -18,6 +18,7 @@ struct IAC
     void Clear() {
         m_AppDelegate = 0;
         m_Listener = 0;
+        m_QueueCreated = false;
     }
     dmScript::LuaCallbackInfo*  m_Listener;
 
@@ -26,8 +27,23 @@ struct IAC
     IACInvocation               m_StoredInvocation;
 
     IACCommandQueue             m_CmdQueue;
+    bool                        m_QueueCreated;
 } g_IAC;
 
+static void CreateQueue()
+{
+    if (!g_IAC.m_QueueCreated)
+    {
+        IAC_Queue_Create(&g_IAC.m_CmdQueue);
+        g_IAC.m_QueueCreated = true;
+    }
+}
+
+static void DestroyQueue()
+{
+    IAC_Queue_Destroy(&g_IAC.m_CmdQueue);
+    g_IAC.m_QueueCreated = false;
+}
 
 @interface IACAppDelegate : NSObject <UIApplicationDelegate>
 
@@ -68,7 +84,10 @@ struct IAC
     cmd.m_Origin = origin ? strdup(origin) : 0;
 
     if (payload != 0 || origin != 0)
+    {
+        CreateQueue(); // Create the queue if needed
         IAC_Queue_Push(&g_IAC.m_CmdQueue, &cmd);
+    }
 
     // Return YES prevents OpenURL from being called, we need to do this as other extensions might and therefore internally handle OpenURL also being called.
     return YES;
@@ -160,14 +179,14 @@ static void HandleInvocation(const IACCommand* cmd)
 
 dmExtension::Result AppInitializeIAC(dmExtension::AppParams* params)
 {
-    IAC_Queue_Create(&g_IAC.m_CmdQueue);
+    CreateQueue();
     return dmExtension::RESULT_OK;
 }
 
 
 dmExtension::Result AppFinalizeIAC(dmExtension::AppParams* params)
 {
-    IAC_Queue_Destroy(&g_IAC.m_CmdQueue);
+    DestroyQueue();
     return dmExtension::RESULT_OK;
 }
 
