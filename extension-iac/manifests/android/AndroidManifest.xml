@@ -8,7 +8,7 @@
         <activity android:name="com.defold.iac.IACActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:launchMode="singleTask"
-            android:exported="false"
+            android:exported="true"
             android:configChanges="keyboardHidden|orientation|screenSize">
             <intent-filter>
                <action android:name="android.intent.action.VIEW" />
