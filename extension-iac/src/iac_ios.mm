@@ -18,7 +18,6 @@ struct IAC
     void Clear() {
         m_AppDelegate = 0;
         m_Listener = 0;
-        m_QueueCreated = false;
     }
     dmScript::LuaCallbackInfo*  m_Listener;
 
@@ -27,23 +26,8 @@ struct IAC
     IACInvocation               m_StoredInvocation;
 
     IACCommandQueue             m_CmdQueue;
-    bool                        m_QueueCreated;
 } g_IAC;
 
-static void CreateQueue()
-{
-    if (!g_IAC.m_QueueCreated)
-    {
-        IAC_Queue_Create(&g_IAC.m_CmdQueue);
-        g_IAC.m_QueueCreated = true;
-    }
-}
-
-static void DestroyQueue()
-{
-    IAC_Queue_Destroy(&g_IAC.m_CmdQueue);
-    g_IAC.m_QueueCreated = false;
-}
 
 @interface IACAppDelegate : NSObject <UIApplicationDelegate>
 
@@ -64,32 +48,33 @@ static void DestroyQueue()
     return YES;
 }
 
+- (BOOL)application:(UIApplication *)application 
+      continueUserActivity:(NSUserActivity *)userActivity 
+        restorationHandler:(void (^)(NSArray<id<UIUserActivityRestoring>> * _Nullable))restorationHandler {
+
+    if ([userActivity.activityType isEqualToString:NSUserActivityTypeBrowsingWeb]) {
+        NSURL *url = userActivity.webpageURL;
+
+        const char* payload = [[url absoluteString] UTF8String];
+        if (payload) {
+            IACCommand cmd;
+            cmd.m_Command = IAC_INVOKE;
+            cmd.m_Payload = strdup(payload);
+            cmd.m_Origin = 0;
+            IAC_Queue_Create(&g_IAC.m_CmdQueue);
+            IAC_Queue_Push(&g_IAC.m_CmdQueue, &cmd);
+        }
+    }
+
+    return YES;
+}
 
 - (BOOL)application:(UIApplication *)application willFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    // Handle invocations launching the app.
-    // willFinishLaunchingWithOptions is called prior to any scripts so we are garuanteed to have this information at any time set_listener is called!
-    const char* origin = 0;
-    const char* payload = 0;
-
-    if (launchOptions[UIApplicationLaunchOptionsSourceApplicationKey]) {
-        origin = [[launchOptions valueForKey:UIApplicationLaunchOptionsSourceApplicationKey] UTF8String];
-    }
-    if (launchOptions[UIApplicationLaunchOptionsURLKey]) {
-        payload = [[[launchOptions valueForKey:UIApplicationLaunchOptionsURLKey] absoluteString] UTF8String];
-    }
-
-    IACCommand cmd;
-    cmd.m_Command = IAC_INVOKE;
-    cmd.m_Payload = payload ? strdup(payload) : 0;
-    cmd.m_Origin = origin ? strdup(origin) : 0;
-
-    if (payload != 0 || origin != 0)
-    {
-        CreateQueue(); // Create the queue if needed
-        IAC_Queue_Push(&g_IAC.m_CmdQueue, &cmd);
-    }
-
     // Return YES prevents OpenURL from being called, we need to do this as other extensions might and therefore internally handle OpenURL also being called.
+    return YES;
+}
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     return YES;
 }
 
@@ -179,14 +164,14 @@ static void HandleInvocation(const IACCommand* cmd)
 
 dmExtension::Result AppInitializeIAC(dmExtension::AppParams* params)
 {
-    CreateQueue();
+    IAC_Queue_Create(&g_IAC.m_CmdQueue);
     return dmExtension::RESULT_OK;
 }
 
 
 dmExtension::Result AppFinalizeIAC(dmExtension::AppParams* params)
 {
-    DestroyQueue();
+    IAC_Queue_Destroy(&g_IAC.m_CmdQueue);
     return dmExtension::RESULT_OK;
 }
 
