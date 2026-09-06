@@ -1,0 +1,2 @@
+# Native code and the Android manifest reference the extension's Java classes by name.
+-keep,allowoptimization class com.defold.iac.** { *; }
