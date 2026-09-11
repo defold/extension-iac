@@ -61,7 +61,6 @@ struct IAC
             cmd.m_Command = IAC_INVOKE;
             cmd.m_Payload = strdup(payload);
             cmd.m_Origin = 0;
-            IAC_Queue_Create(&g_IAC.m_CmdQueue);
             IAC_Queue_Push(&g_IAC.m_CmdQueue, &cmd);
         }
     }
@@ -86,12 +85,16 @@ struct IACAppDelegateRegister
 {
     IACAppDelegateRegister() {
         g_IAC.Clear();
+        // UIKit can deliver a cold-start URL before AppInitialize. Keep the queue
+        // alive for as long as the registered delegate can receive callbacks.
+        IAC_Queue_Create(&g_IAC.m_CmdQueue);
         g_IAC.m_AppDelegate = [[IACAppDelegate alloc] init];
         dmExtension::RegisteriOSUIApplicationDelegate(g_IAC.m_AppDelegate);
     }
     ~IACAppDelegateRegister() {
         dmExtension::UnregisteriOSUIApplicationDelegate(g_IAC.m_AppDelegate);
         [g_IAC.m_AppDelegate release];
+        IAC_Queue_Destroy(&g_IAC.m_CmdQueue);
         g_IAC.Clear();
     }
 };
@@ -162,20 +165,6 @@ static void HandleInvocation(const IACCommand* cmd)
 }
 
 
-dmExtension::Result AppInitializeIAC(dmExtension::AppParams* params)
-{
-    IAC_Queue_Create(&g_IAC.m_CmdQueue);
-    return dmExtension::RESULT_OK;
-}
-
-
-dmExtension::Result AppFinalizeIAC(dmExtension::AppParams* params)
-{
-    IAC_Queue_Destroy(&g_IAC.m_CmdQueue);
-    return dmExtension::RESULT_OK;
-}
-
-
 dmExtension::Result InitializeIAC(dmExtension::Params* params)
 {
     return dmIAC::Initialize(params);
@@ -214,6 +203,6 @@ dmExtension::Result UpdateIAC(dmExtension::Params* params)
 }
 
 
-DM_DECLARE_EXTENSION(IACExt, "IAC", AppInitializeIAC, AppFinalizeIAC, InitializeIAC, UpdateIAC, 0, FinalizeIAC)
+DM_DECLARE_EXTENSION(IACExt, "IAC", 0, 0, InitializeIAC, UpdateIAC, 0, FinalizeIAC)
 
 #endif // DM_PLATFORM_IOS
