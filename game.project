@@ -17,6 +17,7 @@ title = extension-iac
 
 [library]
 include_dirs = extension-iac
+defold_min_version = 1.14.0
 
 [ios]
 bundle_identifier = com.defold.iac
